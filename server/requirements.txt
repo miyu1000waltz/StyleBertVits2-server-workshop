@@ -1,0 +1,6 @@
+numpy<2
+style-bert-vits2==2.5.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+scipy>=1.10.0
+pydantic-settings>=2.0.0

@@ -1,0 +1,30 @@
+services:
+  stylebertvits2:
+    build: .
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./model_assets:/app/model_assets
+      - hf-cache:/root/.cache/huggingface
+      # 詰まり箇所の切り分け用: pip インストールされた style_bert_vits2 パッケージの
+      # infer.py にタイミングログを仕込んだものを上書きマウントする（イメージ再ビルド不要）
+      - ./patches/style_bert_vits2/models/infer.py:/usr/local/lib/python3.11/site-packages/style_bert_vits2/models/infer.py:ro
+    environment:
+      - DEVICE=cpu
+      - DEFAULT_MODEL_NAME=koharune-ami
+      # メモリ節約のため、実際に使うモデルだけをロードする(未使用のamitaroはスキップ)
+      - LOAD_MODELS=koharune-ami
+      # - DEFAULT_SPEAKER_ID=0
+      # - DEFAULT_STYLE=Neutral
+    # イメージにcurlが無いためpython3(標準ライブラリのみ)で疎通確認する。
+    # start_periodはBERTロード+初回のpyopenjtalk辞書ダウンロードを見込んで長めに取る。
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+
+volumes:
+  hf-cache:

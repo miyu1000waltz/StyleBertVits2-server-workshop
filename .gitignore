@@ -1,0 +1,5 @@
+model_assets/*
+!model_assets/.gitkeep
+.env
+__pycache__/
+*.pyc
