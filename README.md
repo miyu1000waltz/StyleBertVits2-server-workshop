@@ -34,6 +34,15 @@
 - Windows上のDocker Desktopは、`model_assets`等のボリュームマウントにWSL2バックエンドを使用します。事前にWSL2が有効化されている必要があります。
 - 会社支給PCなど組織管理下の端末では、セキュリティポリシーによりWSL2やHyper-Vが無効化されている場合があります。その場合はビルド・起動が行えないため、事前に有効化状況を確認してください。
 
+### 改行コード(CRLF/LF) ※Windowsで重要
+
+- Windows環境でビルドは成功しても、コンテナ起動時に以下のエラーで失敗することがあります。
+  ```
+  standard_init_linux.go:228: exec user process caused: no such file or directory
+  ```
+- 原因は`start.sh`の改行コードがCRLFになっていること。Windows上のGit設定(`core.autocrlf`等)によってチェックアウト時に改行コードがLFからCRLFへ変換されると、シバン行(`#!/bin/bash`)の末尾に`\r`が付与され、Linuxコンテナ内でインタプリタが正しく解釈できずこのエラーになります。
+- 対処法: `start.sh`の改行コードをLFに変換してから、再度`docker compose up --build`を実行してください(エディタの改行コード変換機能、または`dos2unix start.sh`等で変換できます)。
+
 ### ライセンス(音声モデル)
 
 - デフォルトで使用する音声モデル`koharune-ami`(HuggingFace: `litagin/sbv2_koharune_ami`)には公式なOSSライセンスの明記がなく、「あみたろの声素材工房」の利用規約に従う形になっています。

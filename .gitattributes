@@ -1,0 +1,4 @@
+# シェルスクリプトはLinuxコンテナ内で実行されるため、改行コードを常にLFに固定する。
+# WindowsでチェックアウトするとGitの設定(core.autocrlf等)次第でCRLFに変換され、
+# シバン行(#!/bin/bash)が壊れて "no such file or directory" エラーの原因になるため。
+*.sh text eol=lf

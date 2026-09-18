@@ -33,6 +33,10 @@
 #      ため、配布物に含めなくても利用者側の追加作業は発生しない。
 #   2. コピー先で `git init` して初期コミットを1つだけ作る（過去の履歴は一切
 #      引き継がれない）。
+#   3. 既にコピー先が存在する場合は、ディレクトリごと削除せずファイルを
+#      上書きコピーする（rsyncは`.git`を除外対象にしているため、コピー先の
+#      `.git`はそのまま残る）。誤削除の被害を局所化し、`git diff`/`git log`で
+#      差分確認や復旧ができるようにするため。
 #
 # 【使い方】
 #   ./scripts/prepare_workshop_release.sh [配布先ディレクトリ]
@@ -43,7 +47,8 @@
 # 【注意】
 #   - 実行後は、配布先ディレクトリの中身（設定ファイル等）に秘密情報が
 #     混入していないか、必ず目視で確認すること。
-#   - 既に配布先ディレクトリが存在する場合は上書きしないよう停止する。
+#   - 既に配布先ディレクトリが存在する場合、y/nで上書き確認する（yならディレクトリは
+#     削除せず、中身をファイル単位で上書きコピーする。コピー先の`.git`は消えない）。
 #   - model_assets/ 配下の音声モデル本体は配布物に含まれない（意図的）。
 
 set -euo pipefail
@@ -59,8 +64,16 @@ DEST_PARENT="$(cd "$(dirname "${DEST_DIR_INPUT}")" && pwd)"
 DEST_DIR="${DEST_PARENT}/$(basename "${DEST_DIR_INPUT}")"
 
 if [ -e "${DEST_DIR}" ]; then
-  echo "エラー: コピー先 '${DEST_DIR}' は既に存在します。上書き事故を防ぐため処理を中止します。" >&2
-  exit 1
+  read -r -p "コピー先 '${DEST_DIR}' は既に存在します。ファイルを上書きコピーしますか？ [y/N]: " ANSWER
+  case "${ANSWER}" in
+    [yY]|[yY][eE][sS])
+      echo "既存の '${DEST_DIR}' にファイルを上書きコピーします(ディレクトリ自体は削除しません)..."
+      ;;
+    *)
+      echo "処理を中止しました。" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 echo "コピー元: ${SRC_DIR}"
@@ -82,12 +95,23 @@ rsync -a \
   --exclude='model_assets/*' \
   "${SRC_DIR}/" "${DEST_DIR}/"
 
-# コピー先で新規にGit管理を開始する（初期コミット1つのみ、過去履歴なし）
+# コピー先のGit管理を行う。初回は `git init` して初期コミットを1つ作る。
+# 2回目以降（既存ディレクトリへの上書きコピー）は、既存の.gitをそのまま使い、
+# 差分だけを新しいコミットとして積む（誤削除の追跡・復旧のため履歴を残す）。
 (
   cd "${DEST_DIR}"
-  git init -q
-  git add .
-  git commit -q -m "Initial commit for workshop distribution"
+  if [ ! -d .git ]; then
+    git init -q
+    git add .
+    git commit -q -m "Initial commit for workshop distribution"
+  else
+    git add -A
+    if ! git diff --cached --quiet; then
+      git commit -q -m "Update workshop distribution files"
+    else
+      echo "[git] 変更差分はありませんでした（コミットなし）"
+    fi
+  fi
 )
 
 echo "完了しました。"
