@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 _models: list = []
 _model_dir = Path(settings.MODEL_DIR)
+# 実際に使っているデバイスの情報（/health で返す）
+_device_info: dict = {}
 
 
 def _model_name(model) -> str:
@@ -79,11 +81,52 @@ def _available_memory_bytes() -> Optional[int]:
     return _vm_available_bytes()
 
 
+def _resolve_device() -> str:
+    """
+    DEVICE の設定から、実際に使うデバイスを決める
+
+    DEVICE=cuda なのに CUDA が使えない場合（CPU 版の torch が入っている、GPU がコンテナに
+    割り当てられていない など）は、黙って CPU で動かさずに起動を止める。
+    CPU で動いていることに気づかないまま、GPU の計測をしてしまうのを防ぐため。
+    """
+    info = {
+        "requested": settings.DEVICE,
+        "torch": torch.__version__,
+        "torch_cuda": torch.version.cuda,  # CPU 版の torch では None
+    }
+    if settings.DEVICE == "cuda":
+        if not torch.cuda.is_available():
+            logger.error(
+                "DEVICE=cuda ですが CUDA が使えません（torch=%s, CUDA=%s）。"
+                "GPU 版のイメージか（.env の COMPOSE_FILE）、GPU がコンテナに割り当てられているかを確認してください",
+                torch.__version__, torch.version.cuda,
+            )
+            sys.exit(1)
+        major, minor = torch.cuda.get_device_capability(0)
+        info.update(
+            device="cuda",
+            gpu_name=torch.cuda.get_device_name(0),
+            compute_capability=f"{major}.{minor}",
+        )
+        # この torch がその GPU 向けの実行コードを持っているか（無いと PTX からの変換になり、遅いか動かない）
+        if f"sm_{major}{minor}" not in torch.cuda.get_arch_list():
+            logger.warning("この torch は sm_%d%d 向けにビルドされていません: %s",
+                           major, minor, torch.cuda.get_arch_list())
+    else:
+        info["device"] = "cpu"
+    _device_info.update(info)
+    logger.info("Device: %s", info)
+    return info["device"]
+
+
 def _init_models() -> None:
     from style_bert_vits2.constants import Languages
     from style_bert_vits2.nlp import bert_models
     from style_bert_vits2.nlp.japanese.user_dict import update_dict
     from style_bert_vits2.tts_model import TTSModel, TTSModelHolder
+
+    # 設定の誤りに早く気づけるよう、重いロードの前にデバイスを決める
+    device = _resolve_device()
 
     # NOTE: 2026/06/24 update_dict(): デフォルト辞書（pyopenjtalk に同梱された一般的な日本語読み辞書）とユーザー辞書（固有名詞など読みを独自登録した辞書）を結合して CSV を生成し、OpenJTalk 用にコンパイルして pyopenjtalk に反映する。
     # WARNING: 2026/06/24 initialize_worker(): pyopenjtalk を別プロセス（TCPワーカー）で動かし、ユーザー辞書への並列アクセスエラーを防ぐ仕組み は呼んではいけない。 pip install 環境では os.path.relpath でモジュールパスの計算が壊れ、ワーカー起動に失敗する。呼ばなければ WORKER_CLIENT=None のままpyopenjtalk が直接呼ばれるフォールバックパスが使われるため省略する。
@@ -101,9 +144,6 @@ def _init_models() -> None:
     if not _model_dir.exists():
         logger.error("MODEL_DIR not found: %s", _model_dir)
         sys.exit(1)
-
-    device = "cuda" if settings.DEVICE == "cuda" and torch.cuda.is_available() else "cpu"
-    logger.info("Device: %s", device)
 
     holder = TTSModelHolder(_model_dir, device)
     if not holder.model_names:
@@ -272,6 +312,7 @@ def health():
         "status": "ok" if _models else "no_models",
         "models": len(_models),
         "loaded_models": [_model_name(m) for m in _models],
+        "device": _device_info,
         "memory": {
             "cgroup_limit_bytes": _cgroup_memory_max(),
             "cgroup_current_bytes": _cgroup_memory_current(),

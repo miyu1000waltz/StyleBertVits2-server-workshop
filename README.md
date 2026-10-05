@@ -20,6 +20,30 @@
 
 初回起動時は②③④で複数回ネットワークアクセスが発生するため、社内ファイアウォール等でHuggingFaceへのアクセスが制限されている環境では起動に失敗することがあります。
 
+## GPU(NVIDIA)で動かす
+
+既定はCPU版です。GPU版に切り替えるときは、`.env.gpu.example`を`.env`にコピーします。`docker compose`が`docker-compose.gpu.yml`(GPU版との差分)を自動で重ねるため、以降のコマンドはCPU版と同じです。
+
+```bash
+cp .env.gpu.example .env        # macOS / Linux
+copy .env.gpu.example .env      # Windows(PowerShell / コマンドプロンプト)
+docker compose up -d --build
+```
+
+- CPU版に戻すときは`.env`を削除します。
+- `.env`はコマンド(`echo ... >> .env`)で作らず、必ずコピーしてください。Windows PowerShell 5.1で書き込むと文字コードがUTF-16になり、`docker compose`が読めません。
+- 重ねたあとの構成は`docker compose config`で確認できます。
+
+| 項目 | CPU版(既定) | GPU版 |
+|---|---|---|
+| torch | 2.14.0 CPU版 | 2.14.0 CUDA 13.0版(T4〜RTX 50に対応) |
+| イメージ名 | (composeの既定) | `stylebertvits2:gpu`(CPU版と共存できる) |
+| `DEVICE` | `cpu` | `cuda` |
+| 前提 | Docker | NVIDIAドライバ580以上。LinuxはNVIDIA Container Toolkit、WindowsはDocker Desktop(WSL2) |
+
+- `DEVICE=cuda`なのにCUDAが使えない場合(CPU版のイメージ、GPUがコンテナに割り当てられていない等)は、CPUで動かさずに起動時にエラーで停止します。
+- 実際に使っているデバイスとGPU名は、起動ログの`Device:`と`/health`の`device`で確認できます。
+
 ## 注意事項
 
 ### ネットワーク

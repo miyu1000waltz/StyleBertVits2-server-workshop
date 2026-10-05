@@ -1,0 +1,29 @@
+# GPU（NVIDIA）で動かすときに docker-compose.yml に重ねる差分
+#
+# 使い方: .env.gpu.example を .env にコピーすると、docker compose が自動でこのファイルを重ねる
+#   cp .env.gpu.example .env      （macOS / Linux）
+#   copy .env.gpu.example .env    （Windows）
+#   docker compose up -d --build
+#
+# 前提: NVIDIA ドライバ 580 以上（CUDA 13.0 版の torch を使うため）
+#   Linux:   NVIDIA Container Toolkit
+#   Windows: Docker Desktop（WSL2）。WSL 側への追加のインストールは不要
+#
+# 重ねたあとの構成の確認: docker compose config
+services:
+  stylebertvits2:
+    build:
+      args:
+        # CUDA 13.0 版。T4（Turing）〜 RTX 50（Blackwell）まで対応
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu130
+    # CPU 版のイメージと共存させるため、名前を分ける
+    image: stylebertvits2:gpu
+    environment:
+      - DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

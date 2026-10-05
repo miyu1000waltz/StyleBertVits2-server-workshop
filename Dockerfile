@@ -16,8 +16,12 @@ WORKDIR /app
 # style-bert-vits2 の C 拡張 (pyworld 等) が numpy 1.x ABI でコンパイルされているため
 RUN pip install --no-cache-dir "numpy<2"
 
-# CPU-only torch を先にインストール（デフォルトでは CUDA 版が入り巨大になるため）
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# torch を先にインストールする（requirements.txt より前に入れて、種類とバージョンを固定する）
+# - 既定は CPU 版（PyPI の既定では CUDA 版が入り、イメージが巨大になるため）
+# - GPU 版は docker-compose.gpu.yml が TORCH_INDEX_URL を CUDA 版に差し替える（README の「GPU で動かす」）
+ARG TORCH_VERSION=2.14.0
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir "torch==${TORCH_VERSION}" --index-url "${TORCH_INDEX_URL}"
 
 COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
